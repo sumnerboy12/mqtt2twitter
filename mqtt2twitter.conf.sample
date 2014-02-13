@@ -1,6 +1,7 @@
 # Logging
-logfile  = '/tmp/mqtt2twitter.log'
-loglevel = 'DEBUG'
+import logging
+logfile  = 'mqtt2twitter.log'
+loglevel = logging.DEBUG
 logformat = '%(asctime)-15s %(message)s'
 
 # MQTT Broker
