@@ -4,34 +4,80 @@
 import twitter  # pip install python-twitter
                 # https://pypi.python.org/pypi/python-twitter
                 # https://github.com/bear/python-twitter
-
 import paho.mqtt.client as paho   # pip install paho-mqtt
-import ssl
-import sys, time
+import logging
 import os
+import signal
+import sys
+import time
 
-__author__    = 'Jan-Piet Mens <jpmens()gmail.com>'
+__author__    = 'Jan-Piet Mens <jpmens()gmail.com>, Ben Jones <ben.jones12()gmail.com>'
 __copyright__ = 'Copyright 2013 Jan-Piet Mens'
 __license__   = """Eclipse Public License - v 1.0 (http://www.eclipse.org/legal/epl-v10.html)"""
 
-def on_connect(mosq, userdata, rc):
-    for topic in userdata['conf']['topics']:
-        mqttc.subscribe(topic, 0)
+# load configuration
+configfile = os.getenv("MQTT2TWITTERCONF", "mqtt2twitter.conf")
+conf = {}
+try:
+    execfile(configfile, conf)
+except Exception, e:
+    print "Cannot load %s: %s" % (configfile, str(e))
+    sys.exit(2)
 
-def on_message(mosq, userdata, msg):
-    payload = str(msg.payload)
+LOGFILE = conf['logfile']
+LOGLEVEL = conf['loglevel']
+LOGFORMAT = conf['logformat']
 
-    # text = topic + ': ' + payload
-    text = payload
-    text = text[0:138]      # truncate for twitter
+MQTT_HOST = conf['broker']
+MQTT_PORT = int(conf['port'])
+MQTT_LWT = conf['lwt']
 
-    tweet(userdata['conf'], text)
+# initialise logging    
+logging.basicConfig(filename=LOGFILE, level=LOGLEVEL, format=LOGFORMAT)
+logging.info("Starting mqtt2twitter")
+logging.info("INFO MODE")
+logging.debug("DEBUG MODE")
 
-def on_disconnect(mosq, userdata, rc):
-    print "OOOOPS! disconnected"
-    time.sleep(10)
+# initialise MQTT broker connection
+mqttc = paho.Client('mqtt2twitter', clean_session=False)
 
-def tweet(conf, status):
+# check for authentication
+if conf['username'] is not None:
+    mqttc.username_pw_set(conf['username'], conf['password'])
+
+# configure the last-will-and-testament
+mqttc.will_set(MQTT_LWT, payload="mqtt2twitter", qos=0, retain=False)
+
+def connect():
+    """
+    Connect to the broker
+    """
+    logging.debug("Attempting connection to MQTT broker %s:%d..." % (MQTT_HOST, MQTT_PORT))
+    mqttc.on_connect = on_connect
+    mqttc.on_message = on_message
+    mqttc.on_disconnect = on_disconnect
+
+    result = mqttc.connect(MQTT_HOST, MQTT_PORT, 60)
+    if result == 0:
+        mqttc.loop_forever()
+    else:
+        logging.info("Connection failed with error code %s. Retrying in 10s...", result)
+        time.sleep(10)
+        connect()
+         
+def disconnect(signum, frame):
+    """
+    Signal handler to ensure we disconnect cleanly 
+    in the event of a SIGTERM or SIGINT.
+    """
+    logging.debug("Disconnecting from MQTT broker...")
+    mqttc.loop_stop()
+    mqttc.disconnect()
+    logging.debug("Exiting on signal %d", signum)
+    sys.exit(signum)
+
+def tweet(message):
+    logging.debug("Tweeting %s..." % message)
     twapi = twitter.Api(
         consumer_key        = conf['consumer_key'],
         consumer_secret     = conf['consumer_secret'],
@@ -40,39 +86,47 @@ def tweet(conf, status):
     )
 
     try:
-        res = twapi.PostUpdate(status, trim_user=False)
+        res = twapi.PostUpdate(message, trim_user=False)
     except twitter.TwitterError, e:
-        print "mqtt2twitter: ", str(e)
+        logging.error("TwitterError: %s" % str(e))
     except Exception, e:
-        print "mqtt2twitter: ", str(e)
+        logging.error("Error: %s" % str(e))
 
-if __name__ == '__main__':
+def on_connect(mosq, userdata, result_code):
+    logging.debug("Connected to MQTT broker, subscribing to topics...")
+    for sub in conf['topics']:
+        logging.debug("Subscribing to %s" % sub)
+        mqttc.subscribe(sub, 0)
 
-    configfile = os.getenv("MQTT2TWITTERCONF", "mqtt2twitter.conf")
-    conf = {}
+def on_message(mosq, userdata, msg):
+    """
+    Message received from the broker
+    """
+    topic = msg.topic
+    payload = str(msg.payload)
+    logging.debug("Message received on %s: %s" % (topic, payload))
 
-    try:
-        execfile(configfile, conf)
-    except Exception, e:
-        print "Cannot load %s: %s" % (configfile, str(e))
-        sys.exit(2)
+    # Try to find matching settings for this topic
+    for sub in conf['topics']:
+        if paho.topic_matches_sub(sub, topic):
+            tweet(payload[0:138])
+            break
 
-    mqttc = paho.Client('mqtt2twitter', clean_session=False, userdata=dict(conf=conf))
-    mqttc.on_connect = on_connect
-    mqttc.on_message = on_message
-    mqttc.on_disconnect = on_disconnect
+def on_disconnect(mosq, userdata, result_code):
+    """
+    Handle disconnections from the broker
+    """
+    if result_code == 0:
+        logging.info("Clean disconnection")
+    else:
+        logging.info("Unexpected disconnection! Reconnecting in 5 seconds...")
+        logging.debug("Result code: %s", result_code)
+        time.sleep(5)
+        connect()
 
-    if conf['username'] is not None:
-        mqttc.username_pw_set(conf['username'], conf['password'])
-
-    mqttc.will_set('/clients/mqtt2twitter', payload="Adios!", qos=0, retain=False)
-
-    mqttc.connect(conf['broker'], int(conf['port']), 60)
-
-    try:
-        mqttc.loop_forever()
-    except KeyboardInterrupt:
-        sys.exit(0)
-    except:
-        raise
-
+# use the signal module to handle signals
+signal.signal(signal.SIGTERM, disconnect)
+signal.signal(signal.SIGINT, disconnect)
+        
+# connect to broker and start listening
+connect()

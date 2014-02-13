@@ -1,0 +1,23 @@
+# Logging
+logfile  = '/tmp/mqtt2twitter.log'
+loglevel = 'DEBUG'
+logformat = '%(asctime)-15s %(message)s'
+
+# MQTT Broker
+broker = 'localhost'
+port = 1883
+username = None
+password = None
+lwt = 'lwt/mqtt2twitter'
+
+# Twitter
+consumer_key            = 'wwww'
+consumer_secret         = 'xxxx'
+token                   = 'yyyy'
+token_secret            = 'zzzz'
+
+# MQTT topics
+topics = {
+    'notification/warn',
+    'notification/error',
+}
