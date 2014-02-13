@@ -11,5 +11,5 @@ Based on JP Mens [mqtwit](https://github.com/jpmens/mqtwit) script.
 * An MQTT broker (e.g. [Mosquitto](http://mosquitto.org))
 * Twitter auth tokens
 * The Paho Python module: `pip install paho-mqtt`
-* The Python Twitter modeul: `pip install python-twitter`
+* The Python Twitter module: `pip install python-twitter`
 

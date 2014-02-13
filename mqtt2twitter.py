@@ -15,38 +15,44 @@ __author__    = 'Jan-Piet Mens <jpmens()gmail.com>, Ben Jones <ben.jones12()gmai
 __copyright__ = 'Copyright 2013 Jan-Piet Mens'
 __license__   = """Eclipse Public License - v 1.0 (http://www.eclipse.org/legal/epl-v10.html)"""
 
+# script name used for conf/log file names etc
+SCRIPTNAME = 'mqtt2twitter'
+
+# get the config and log file names
+CONFIGFILE = os.getenv(SCRIPTNAME.upper() + 'CONF', SCRIPTNAME + ".conf")
+LOGFILE = os.getenv(SCRIPTNAME.upper() + 'LOG', SCRIPTNAME + ".log")
+
 # load configuration
-configfile = os.getenv("MQTT2TWITTERCONF", "mqtt2twitter.conf")
 conf = {}
 try:
-    execfile(configfile, conf)
+    execfile(CONFIGFILE, conf)
 except Exception, e:
-    print "Cannot load %s: %s" % (configfile, str(e))
+    print "Cannot load configuration %s: %s" % (CONFIGFILE, str(e))
     sys.exit(2)
 
-LOGFILE = conf['logfile']
-LOGLEVEL = conf['loglevel']
-LOGFORMAT = conf['logformat']
+LOGLEVEL = conf.get('loglevel', logging.DEBUG)
+LOGFORMAT = conf.get('logformat', '%(asctime)-15s %(message)s')
 
-MQTT_HOST = conf['broker']
-MQTT_PORT = int(conf['port'])
-MQTT_LWT = conf['lwt']
+MQTT_HOST = conf.get('broker', 'localhost')
+MQTT_PORT = int(conf.get('port', 1883))
+MQTT_LWT = conf.get('lwt', None)
 
 # initialise logging    
 logging.basicConfig(filename=LOGFILE, level=LOGLEVEL, format=LOGFORMAT)
-logging.info("Starting mqtt2twitter")
+logging.info("Starting " + SCRIPTNAME)
 logging.info("INFO MODE")
 logging.debug("DEBUG MODE")
 
 # initialise MQTT broker connection
-mqttc = paho.Client('mqtt2twitter', clean_session=False)
+mqttc = paho.Client(SCRIPTNAME, clean_session=False)
 
 # check for authentication
 if conf['username'] is not None:
     mqttc.username_pw_set(conf['username'], conf['password'])
 
 # configure the last-will-and-testament
-mqttc.will_set(MQTT_LWT, payload="mqtt2twitter", qos=0, retain=False)
+if MQTT_LWT is not None:
+    mqttc.will_set(MQTT_LWT, payload=SCRIPTNAME, qos=0, retain=False)
 
 def connect():
     """
