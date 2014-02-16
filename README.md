@@ -1,3 +1,6 @@
+**NOTE: this script has been superceeded by [mqttwarn](https://github.com/jpmens/mqttwarn).**
+---
+
 # mqtt2xbmc
 
 This program subscribes to any number of MQTT topics (including wildcards) and publishes received payloads as tweets (copy `mqtt2twitter.conf.sample` to `mqtt2twitter.conf` for use). 
